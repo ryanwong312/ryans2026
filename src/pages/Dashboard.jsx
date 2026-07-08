@@ -22,14 +22,13 @@ import {
 import { Button } from '@/components/ui/button';
 import QuoteDisplay from '@/components/quotes/QuoteDisplay';
 import StatCard from '@/components/ui/StatCard';
-import MoodSelector, { getMoodEmoji } from '@/components/ui/MoodSelector';
+import MoodSelector, { getMoodEmoji, getMoodLabel } from '@/components/ui/MoodSelector';
 import TodaySchedule from '@/components/dashboard/TodaySchedule';
 import WeeklyStats from '@/components/dashboard/WeeklyStats';
 import AIDashboardCoach from '@/components/dashboard/AIDashboardCoach';
 import AIAssistant from '@/components/ai/AIAssistant';
-import GamificationWidget from '@/components/gamification/GamificationWidget';
-import LevelUpModal from '@/components/gamification/LevelUpModal';
-import PointNotification from '@/components/gamification/PointNotification';
+import { calculateDayStreak } from '@/utils/streakCalculator';
+import { usePreferences } from '@/components/customization/PreferencesProvider';
 import { Flag } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import {
@@ -61,12 +60,11 @@ function LiveClock() {
 
 export default function Dashboard() {
   const [showCheckIn, setShowCheckIn] = useState(false);
-  const [showLevelUp, setShowLevelUp] = useState(false);
-  const [newLevel, setNewLevel] = useState(null);
   const [checkInData, setCheckInData] = useState({
-    mood: 'good',
+    mood: 5,
     one_interesting_thing: '',
   });
+  const { prefs } = usePreferences();
   const todayStr = format(new Date(), 'yyyy-MM-dd');
 
   const { data: todayEntry, refetch: refetchDay } = useQuery({
@@ -86,7 +84,7 @@ export default function Dashboard() {
 
   const { data: allHabitLogs = [] } = useQuery({
     queryKey: ['all-habit-logs'],
-    queryFn: () => db.entities.HabitLog.list('-date', 1000),
+    queryFn: () => db.entities.HabitLog.list('-date', 5000),
   });
 
   const { data: workouts = [] } = useQuery({
@@ -139,34 +137,11 @@ export default function Dashboard() {
     
     let longestStreak = 0;
     habits.forEach(habit => {
-      const habitLogsFiltered = allHabitLogs
+      const completedDates = allHabitLogs
         .filter(log => log.habit_id === habit.id && log.completed)
-        .sort((a, b) => new Date(b.date) - new Date(a.date));
-      
-      if (habitLogsFiltered.length === 0) return;
-      
-      let currentStreak = 0;
-      let expectedDate = new Date();
-      expectedDate.setHours(0, 0, 0, 0);
-      
-      for (const log of habitLogsFiltered) {
-        const logDate = new Date(log.date);
-        logDate.setHours(0, 0, 0, 0);
-        
-        const diffDays = Math.floor((expectedDate - logDate) / (1000 * 60 * 60 * 24));
-        
-        if (diffDays === 0) {
-          currentStreak++;
-          expectedDate.setDate(expectedDate.getDate() - 1);
-        } else if (diffDays === 1) {
-          currentStreak++;
-          expectedDate.setDate(expectedDate.getDate() - 1);
-        } else {
-          break;
-        }
-      }
-      
-      longestStreak = Math.max(longestStreak, currentStreak);
+        .map(log => log.date);
+      const streak = calculateDayStreak(completedDates);
+      longestStreak = Math.max(longestStreak, streak);
     });
     
     return longestStreak;
@@ -190,7 +165,7 @@ export default function Dashboard() {
   useEffect(() => {
     if (today) {
       setCheckInData({
-        mood: today.mood || 'good',
+        mood: today.mood != null ? today.mood : 5,
         one_interesting_thing: today.one_interesting_thing || '',
       });
     }
@@ -206,7 +181,7 @@ export default function Dashboard() {
               animate={{ opacity: 1, y: 0 }}
               className="text-3xl md:text-4xl font-bold text-white mb-2"
             >
-              Good {new Date().getHours() < 12 ? 'Morning' : new Date().getHours() < 17 ? 'Afternoon' : 'Evening'}, Ryan
+              Good {new Date().getHours() < 12 ? 'Morning' : new Date().getHours() < 17 ? 'Afternoon' : 'Evening'}, {prefs.display_name}
             </motion.h1>
             <p className="text-slate-400">{format(new Date(), 'EEEE, MMMM d, yyyy')}</p>
           </div>
@@ -233,7 +208,7 @@ export default function Dashboard() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <span className="text-4xl">{getMoodEmoji(today.mood)}</span>
-                  <span className="text-xl text-white capitalize">{today.mood}</span>
+                  <span className="text-xl text-white">{getMoodLabel(today.mood)}</span>
                 </div>
                 <LiveClock />
               </div>
@@ -417,10 +392,6 @@ export default function Dashboard() {
         </DialogContent>
       </Dialog>
 
-      <PointNotification />
-      {showLevelUp && newLevel && (
-        <LevelUpModal level={newLevel} onClose={() => setShowLevelUp(false)} />
-      )}
       <AIAssistant context="general" contextData={{}} />
     </div>
   );

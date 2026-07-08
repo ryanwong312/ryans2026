@@ -1,6 +1,6 @@
 const db = globalThis.__B44_DB__ || { auth:{ isAuthenticated: async()=>false, me: async()=>null }, entities:new Proxy({}, { get:()=>({ filter:async()=>[], get:async()=>null, create:async()=>({}), update:async()=>({}), delete:async()=>({}) }) }), integrations:{ Core:{ UploadFile:async()=>({ file_url:'' }) } } };
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { motion } from 'framer-motion';
@@ -32,26 +32,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import MoodSelector, { getMoodEmoji } from '@/components/ui/MoodSelector';
+import MoodSelector, { getMoodEmoji, getMoodLabel, moods, moodToValue } from '@/components/ui/MoodSelector';
 import { Textarea } from '@/components/ui/textarea';
 import RichTextEditor from '@/components/editor/RichTextEditor';
 import QuoteDisplay from '@/components/quotes/QuoteDisplay';
 import UnsavedChangesDialog from '@/components/shared/UnsavedChangesDialog';
 import EnhancedPhotoUpload from '@/components/media/EnhancedPhotoUpload';
-import { useGamification } from '@/components/gamification/useGamification';
-import { triggerPointNotification } from '@/components/gamification/PointNotification';
-import PointNotification from '@/components/gamification/PointNotification';
-import { useAchievementProgress } from '@/components/gamification/AchievementProgressTracker';
 import { downloadCSV } from '@/utils/csvExport';
 
 export default function Journal() {
   const queryClient = useQueryClient();
-  const { awardXP, updateStreak } = useGamification();
-  const { checkAndUpdateAchievements } = useAchievementProgress();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState({
-    mood: 'good',
+    mood: 5,
     one_interesting_thing: '',
     gratitude_1: '',
     gratitude_2: '',
@@ -70,6 +64,7 @@ export default function Journal() {
   const [showUnsavedWarning, setShowUnsavedWarning] = useState(false);
   const [pendingAction, setPendingAction] = useState(null);
   const [uploadingBackup, setUploadingBackup] = useState(false);
+  const restoreInputRef = useRef(null);
 
   const dateStr = format(currentDate, 'yyyy-MM-dd');
 
@@ -103,7 +98,7 @@ export default function Journal() {
   useEffect(() => {
     if (dayEntry) {
       setFormData({
-        mood: dayEntry.mood || 'good',
+        mood: dayEntry.mood != null ? dayEntry.mood : 5,
         one_interesting_thing: dayEntry.one_interesting_thing || '',
         gratitude_1: dayEntry.gratitude_1 || '',
         gratitude_2: dayEntry.gratitude_2 || '',
@@ -120,7 +115,7 @@ export default function Journal() {
       setIsEditing(false);
     } else {
       setFormData({
-        mood: 'good',
+        mood: 5,
         one_interesting_thing: '',
         gratitude_1: '',
         gratitude_2: '',
@@ -155,26 +150,6 @@ export default function Journal() {
   const handleSave = async () => {
     saveMutation.mutate(formData);
     setHasUnsavedChanges(false);
-    
-    // Award XP for journaling (only if today)
-    if (format(currentDate, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd')) {
-      const wordCount = formData.journal_content?.replace(/<[^>]*>/g, '').split(/\s+/).length || 0;
-      const xp = wordCount >= 100 ? 25 : 10;
-      const fc = wordCount >= 100 ? 5 : 2;
-      
-      await awardXP({ xp, fc, source: 'Journal Entry' });
-      triggerPointNotification(xp, fc, 'Journal Entry');
-      
-      if (formData.gratitude_1 && formData.gratitude_2 && formData.gratitude_3) {
-        await awardXP({ xp: 15, fc: 3, source: 'Gratitude Log' });
-        triggerPointNotification(15, 3, 'Gratitude Complete');
-      }
-      
-      await updateStreak();
-      
-      // Check and update achievement progress
-      await checkAndUpdateAchievements('journal', formData);
-    }
   };
 
   const handlePhotosChange = (newPhotos) => {
@@ -220,7 +195,8 @@ export default function Journal() {
         .sort((a, b) => new Date(b.date) - new Date(a.date))
         .map(day => [
           day.date,
-          day.mood || '',
+          day.mood != null ? day.mood : '',
+          day.mood != null ? getMoodLabel(day.mood) : '',
           day.one_interesting_thing || '',
           day.gratitude_1 || '',
           day.gratitude_2 || '',
@@ -233,7 +209,7 @@ export default function Journal() {
           day.bedtime || '',
           day.wake_time || '',
         ]);
-      downloadCSV(rows, ['Date', 'Mood', 'One Interesting Thing', 'Gratitude 1', 'Gratitude 2', 'Gratitude 3', 'Journal Entry', 'Habit Completion %', 'Word Count', 'Sleep Hours', 'Sleep Quality', 'Bedtime', 'Wake Time'], `journal_export_${format(new Date(), 'yyyy-MM-dd')}.csv`);
+      downloadCSV(rows, ['Date', 'Mood Value', 'Mood Label', 'One Interesting Thing', 'Gratitude 1', 'Gratitude 2', 'Gratitude 3', 'Journal Entry', 'Habit Completion %', 'Word Count', 'Sleep Hours', 'Sleep Quality', 'Bedtime', 'Wake Time'], `journal_export_${format(new Date(), 'yyyy-MM-dd')}.csv`);
     } catch (error) {
       console.error('CSV export failed:', error);
       alert('Failed to export journal CSV');
@@ -255,7 +231,7 @@ export default function Journal() {
         entry += `WORD COUNT: ${countJournalWords(day)}\n`;
         entry += `${'='.repeat(60)}\n\n`;
 
-        if (day.mood) entry += `MOOD: ${day.mood}\n\n`;
+        if (day.mood != null) entry += `MOOD: ${getMoodLabel(day.mood)} (${day.mood})\n\n`;
         if (day.one_interesting_thing) entry += `ONE INTERESTING THING:\n${day.one_interesting_thing}\n\n`;
         
         if (day.gratitude_1 || day.gratitude_2 || day.gratitude_3) {
@@ -318,7 +294,7 @@ export default function Journal() {
         
         const dateStr = new Date(dateMatch[1]).toISOString().split('T')[0];
         
-        const moodMatch = entry.match(/MOOD:\s*([^\n]+)/);
+        const moodMatch = entry.match(/MOOD:\s*[^(]*\(([\d.]+)\)/);
         const interestingMatch = entry.match(/ONE INTERESTING THING:\s*([^\n]+(?:\n(?!GRATITUDE:|JOURNAL ENTRY:|SLEEP:)[^\n]+)*)/);
         const journalMatch = entry.match(/JOURNAL ENTRY:\s*([^\n]+(?:\n(?!SLEEP:)[^\n]+)*)/);
         const sleepMatch = entry.match(/SLEEP:\s*(\d+\.?\d*)\s*hours/);
@@ -331,7 +307,7 @@ export default function Journal() {
         const existingEntries = await db.entities.Day.filter({ date: dateStr });
         const dayData = {
           date: dateStr,
-          mood: moodMatch ? moodMatch[1].trim() : undefined,
+          mood: moodMatch ? parseFloat(moodMatch[1]) : undefined,
           one_interesting_thing: interestingMatch ? interestingMatch[1].trim() : undefined,
           journal_content: journalMatch ? journalMatch[1].trim() : undefined,
           sleep_hours: sleepMatch ? parseFloat(sleepMatch[1]) : undefined,
@@ -413,25 +389,25 @@ export default function Journal() {
               <span className="hidden sm:inline">CSV</span>
             </Button>
             
-            <label>
-              <input
-                type="file"
-                accept=".txt"
-                onChange={uploadJournalBackup}
-                className="hidden"
-                disabled={uploadingBackup}
-              />
-              <Button
-                variant="outline"
-                size="sm"
-                className="border-slate-600 gap-2"
-                disabled={uploadingBackup}
-                type="button"
-              >
-                {uploadingBackup ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-                <span className="hidden sm:inline">Restore</span>
-              </Button>
-            </label>
+            <input
+              ref={restoreInputRef}
+              type="file"
+              accept=".txt"
+              onChange={uploadJournalBackup}
+              className="hidden"
+              disabled={uploadingBackup}
+            />
+            <Button
+              onClick={() => restoreInputRef.current?.click()}
+              variant="outline"
+              size="sm"
+              className="border-slate-600 gap-2"
+              disabled={uploadingBackup}
+              type="button"
+            >
+              {uploadingBackup ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+              <span className="hidden sm:inline">Restore</span>
+            </Button>
             
             {!isEditing && dayEntry && (
               <Button
@@ -467,10 +443,24 @@ export default function Journal() {
               <div className="space-y-6">
                 <div className="grid md:grid-cols-2 gap-6">
                   <div>
-                    <Label className="text-slate-400 mb-3 block">How was your day?</Label>
+                    <div className="flex items-center gap-3 mb-3">
+                      <Label className="text-slate-400">How was your day?</Label>
+                      {moodToValue(formData.mood) != null && (
+                        <span className={`px-3 py-1 rounded-full text-xs font-medium text-white ${moods.find(m => m.value === moodToValue(formData.mood))?.color}`}>
+                          {getMoodLabel(formData.mood)}
+                        </span>
+                      )}
+                    </div>
                     <MoodSelector
                       value={formData.mood}
-                      onChange={(mood) => isEditing && setFormData({ ...formData, mood })}
+                      onChange={(mood) => {
+                        if (isEditing) {
+                          setFormData({ ...formData, mood });
+                          setHasUnsavedChanges(true);
+                        }
+                      }}
+                      size="xs"
+                      showLabel={false}
                     />
                   </div>
                   <div>
@@ -815,7 +805,6 @@ export default function Journal() {
         </div>
       </div>
 
-      <PointNotification />
       <UnsavedChangesDialog
         open={showUnsavedWarning}
         onDiscard={() => {

@@ -21,10 +21,6 @@ import AIAssistant from '@/components/ai/AIAssistant';
 import StatCard from '@/components/ui/StatCard';
 import StudyTimer from '@/components/study/StudyTimer';
 import QuoteDisplay from '@/components/quotes/QuoteDisplay';
-import { useGamification } from '@/components/gamification/useGamification';
-import { triggerPointNotification } from '@/components/gamification/PointNotification';
-import PointNotification from '@/components/gamification/PointNotification';
-import { useAchievementProgress } from '@/components/gamification/AchievementProgressTracker';
 
 const ibGroups = [
   { value: 1, label: 'Group 1: Language & Literature' },
@@ -40,8 +36,6 @@ const assignmentTypes = ['homework', 'essay', 'ia', 'presentation', 'exam', 'pro
 
 export default function Study() {
   const queryClient = useQueryClient();
-  const { awardXP } = useGamification();
-  const { checkAndUpdateAchievements } = useAchievementProgress();
   const [showSubjectDialog, setShowSubjectDialog] = useState(false);
   const [showAssignmentDialog, setShowAssignmentDialog] = useState(false);
   const [showNoteDialog, setShowNoteDialog] = useState(false);
@@ -73,18 +67,7 @@ export default function Study() {
   const deleteSubjectMutation = useMutation({ mutationFn: (id) => db.entities.IBSubject.delete(id), onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['subjects'] }); setShowSubjectDialog(false); setEditingSubject(null); } });
   const createAssignmentMutation = useMutation({ mutationFn: (data) => db.entities.Assignment.create(data), onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['assignments'] }); setShowAssignmentDialog(false); } });
   const updateAssignmentMutation = useMutation({ 
-    mutationFn: async ({ id, data }) => {
-      const oldAssignment = assignments.find(a => a.id === id);
-      const result = await db.entities.Assignment.update(id, data);
-      
-      // Award XP if marking as completed
-      if (data.status === 'completed' && oldAssignment?.status !== 'completed') {
-        await awardXP({ xp: 20, fc: 4, source: 'Assignment Complete', description: oldAssignment.title });
-        triggerPointNotification(20, 4, 'Assignment Done!');
-      }
-      
-      return result;
-    }, 
+    mutationFn: ({ id, data }) => db.entities.Assignment.update(id, data), 
     onSuccess: () => { 
       queryClient.invalidateQueries({ queryKey: ['assignments'] }); 
       setShowAssignmentDialog(false); 
@@ -92,13 +75,7 @@ export default function Study() {
     } 
   });
   const createNoteMutation = useMutation({ 
-    mutationFn: async (data) => {
-      const result = await db.entities.ClassNote.create(data);
-      // Award XP for taking notes
-      await awardXP({ xp: 15, fc: 3, source: 'Class Notes', description: `Notes: ${data.title}` });
-      triggerPointNotification(15, 3, 'Class Notes');
-      return result;
-    }, 
+    mutationFn: (data) => db.entities.ClassNote.create(data), 
     onSuccess: () => { 
       queryClient.invalidateQueries({ queryKey: ['class-notes'] }); 
       setShowNoteDialog(false); 
@@ -106,19 +83,7 @@ export default function Study() {
   });
   
   const createSessionMutation = useMutation({ 
-    mutationFn: async (data) => {
-      const result = await db.entities.StudySession.create(data);
-      // Award XP for study session
-      const xp = data.duration_minutes >= 45 ? 20 : Math.floor(data.duration_minutes / 2);
-      const fc = data.duration_minutes >= 45 ? 4 : 1;
-      await awardXP({ xp, fc, source: 'Study Session', description: `${data.duration_minutes} minutes` });
-      triggerPointNotification(xp, fc, `${data.duration_minutes}min Study`);
-      
-      // Check and update achievement progress
-      await checkAndUpdateAchievements('study', data);
-      
-      return result;
-    }, 
+    mutationFn: (data) => db.entities.StudySession.create(data), 
     onSuccess: () => { 
       queryClient.invalidateQueries({ queryKey: ['study-sessions'] }); 
       setShowSessionDialog(false); 
@@ -307,7 +272,6 @@ export default function Study() {
         </DialogContent>
       </Dialog>
 
-      <PointNotification />
       <AIAssistant context="study" contextData={{ subjects }} />
     </div>
   );

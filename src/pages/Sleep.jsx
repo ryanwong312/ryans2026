@@ -1,16 +1,21 @@
 const db = globalThis.__B44_DB__ || { auth:{ isAuthenticated: async()=>false, me: async()=>null }, entities:new Proxy({}, { get:()=>({ filter:async()=>[], get:async()=>null, create:async()=>({}), update:async()=>({}), delete:async()=>({}) }) }), integrations:{ Core:{ UploadFile:async()=>({ file_url:'' }) } } };
 
-import React, { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import React, { useState, useRef } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { motion } from 'framer-motion';
 import { format, subDays, eachDayOfInterval } from 'date-fns';
-import { Moon, Zap, TrendingUp, Clock, BarChart3 } from 'lucide-react';
+import { Moon, Zap, TrendingUp, Clock, BarChart3, Download, Upload, Loader2 } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, LineChart, Line } from 'recharts';
 import StatCard from '@/components/ui/StatCard';
+import { Button } from '@/components/ui/button';
+import { downloadCSV, parseCSVLine } from '@/utils/csvExport';
 
 export default function Sleep() {
+  const queryClient = useQueryClient();
   const [timeRange, setTimeRange] = useState(30);
+  const [importing, setImporting] = useState(false);
+  const importInputRef = useRef(null);
 
   const startDate = format(subDays(new Date(), timeRange), 'yyyy-MM-dd');
   const endDate = format(new Date(), 'yyyy-MM-dd');
@@ -56,6 +61,91 @@ export default function Sleep() {
 
   const correlation = getCorrelation();
 
+  const exportSleepCSV = async () => {
+    try {
+      const allDays = await db.entities.Day.list('date', 5000);
+      const rows = allDays
+        .filter(d => d.sleep_hours || d.sleep_quality || d.bedtime || d.wake_time || d.energy_level)
+        .map(d => [
+          d.date,
+          d.sleep_hours || '',
+          d.sleep_quality || '',
+          d.bedtime || '',
+          d.wake_time || '',
+          d.energy_level || '',
+        ]);
+      downloadCSV(rows, ['Date', 'Sleep Hours', 'Sleep Quality', 'Bedtime', 'Wake Time', 'Energy Level'], `sleep_export_${format(new Date(), 'yyyy-MM-dd')}.csv`);
+    } catch (err) {
+      console.error('Sleep CSV export failed:', err);
+      alert('Failed to export sleep CSV');
+    }
+  };
+
+  const importSleepCSV = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    setImporting(true);
+    try {
+      const text = await file.text();
+      const lines = text.split(/\r?\n/).filter(l => l.trim());
+      if (lines.length < 2) {
+        alert('No data rows found in CSV');
+        return;
+      }
+
+      const headers = parseCSVLine(lines[0]).map(h => h.trim().toLowerCase());
+      const idx = (name) => headers.indexOf(name);
+
+      const allDays = await db.entities.Day.list('date', 5000);
+      const dayMap = {};
+      allDays.forEach(d => { dayMap[d.date] = d; });
+
+      const toCreate = [];
+      const toUpdate = [];
+
+      for (let i = 1; i < lines.length; i++) {
+        const values = parseCSVLine(lines[i]);
+        const date = values[idx('date')]?.trim();
+        if (!date) continue;
+
+        const sleepHours = values[idx('sleep hours')]?.trim();
+        const sleepQuality = values[idx('sleep quality')]?.trim().toLowerCase();
+        const bedtime = values[idx('bedtime')]?.trim();
+        const wakeTime = values[idx('wake time')]?.trim();
+        const energyLevel = values[idx('energy level')]?.trim();
+
+        const dayData = {};
+        if (sleepHours !== '' && sleepHours != null) dayData.sleep_hours = parseFloat(sleepHours);
+        if (sleepQuality) dayData.sleep_quality = sleepQuality;
+        if (bedtime) dayData.bedtime = bedtime;
+        if (wakeTime) dayData.wake_time = wakeTime;
+        if (energyLevel !== '' && energyLevel != null) dayData.energy_level = parseFloat(energyLevel);
+
+        if (Object.keys(dayData).length === 0) continue;
+
+        const existing = dayMap[date];
+        if (existing) {
+          toUpdate.push({ id: existing.id, ...dayData });
+        } else {
+          toCreate.push({ date, ...dayData });
+        }
+      }
+
+      if (toCreate.length > 0) await db.entities.Day.bulkCreate(toCreate);
+      if (toUpdate.length > 0) await db.entities.Day.bulkUpdate(toUpdate);
+
+      queryClient.invalidateQueries({ queryKey: ['days-sleep'] });
+      alert(`Imported ${toCreate.length + toUpdate.length} sleep records (${toCreate.length} new, ${toUpdate.length} updated)!`);
+    } catch (err) {
+      console.error('Sleep import failed:', err);
+      alert('Failed to import sleep CSV');
+    } finally {
+      setImporting(false);
+      e.target.value = '';
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 p-4 md:p-8">
       <div className="max-w-7xl mx-auto space-y-8">
@@ -64,10 +154,32 @@ export default function Sleep() {
             <h1 className="text-3xl font-bold text-white flex items-center gap-3"><Moon className="w-8 h-8 text-indigo-400" />Sleep Trends</h1>
             <p className="text-slate-400">Track and analyze your sleep patterns</p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2 items-center">
             {[7, 30, 90].map(range => (
               <button key={range} onClick={() => setTimeRange(range)} className={`px-4 py-2 rounded-lg text-sm font-medium transition ${timeRange === range ? 'bg-indigo-500 text-white' : 'bg-slate-800/50 text-slate-400 hover:text-white'}`}>{range} days</button>
             ))}
+            <Button onClick={exportSleepCSV} variant="outline" size="sm" className="border-slate-600 gap-2 ml-2">
+              <Download className="w-4 h-4" />
+              <span className="hidden sm:inline">CSV</span>
+            </Button>
+            <input
+              ref={importInputRef}
+              type="file"
+              accept=".csv"
+              onChange={importSleepCSV}
+              className="hidden"
+              disabled={importing}
+            />
+            <Button
+              onClick={() => importInputRef.current?.click()}
+              variant="outline"
+              size="sm"
+              className="border-slate-600 gap-2"
+              disabled={importing}
+            >
+              {importing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+              <span className="hidden sm:inline">Import</span>
+            </Button>
           </div>
         </div>
 

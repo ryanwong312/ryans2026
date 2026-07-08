@@ -50,12 +50,11 @@
 import AICoach from './pages/AICoach';
 import Calendar from './pages/Calendar';
 import Dashboard from './pages/Dashboard';
-import Goals from './pages/Goals';
 import Habits from './pages/Habits';
 import Journal from './pages/Journal';
 import Notes from './pages/Notes';
 import Personal from './pages/Personal';
-import Rewards from './pages/Rewards';
+import Customization from './pages/Customization';
 import Running from './pages/Running';
 import Sleep from './pages/Sleep';
 import Study from './pages/Study';
@@ -65,12 +64,11 @@ export const PAGES = {
     "AICoach": AICoach,
     "Calendar": Calendar,
     "Dashboard": Dashboard,
-    "Goals": Goals,
     "Habits": Habits,
     "Journal": Journal,
     "Notes": Notes,
     "Personal": Personal,
-    "Rewards": Rewards,
+    "Customization": Customization,
     "Running": Running,
     "Sleep": Sleep,
     "Study": Study,

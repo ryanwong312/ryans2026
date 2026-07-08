@@ -9,17 +9,19 @@ import {
   Activity,
   GraduationCap,
   Calendar,
-  Target,
   FileText,
   Moon,
   Lock,
   MessageCircle,
   Menu,
   X,
-  Sparkles
+  Sparkles,
+  Settings,
+  BarChart3,
+  Database
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import ThemeApplier from '@/components/gamification/ThemeApplier';
+import { usePreferences } from '@/components/customization/PreferencesProvider';
 
 const navItems = [
   { name: 'Dashboard', icon: Home, page: 'Dashboard', emoji: '🏠' },
@@ -28,31 +30,34 @@ const navItems = [
   { name: 'Running', icon: Activity, page: 'Running', emoji: '🏃' },
   { name: 'Study Hub', icon: GraduationCap, page: 'Study', emoji: '🎓' },
   { name: 'Calendar', icon: Calendar, page: 'Calendar', emoji: '📅' },
-  { name: 'Goals', icon: Target, page: 'Goals', emoji: '🎯' },
   { name: 'Notes', icon: FileText, page: 'Notes', emoji: '📝' },
-  { name: 'Rewards', icon: Target, page: 'Rewards', emoji: '🏆' },
   { name: 'Sleep', icon: Moon, page: 'Sleep', emoji: '😴' },
+  { name: 'Weekly Review', icon: BarChart3, page: 'WeeklyReview', emoji: '📊' },
   { name: 'Personal', icon: Lock, page: 'Personal', emoji: '🔒' },
+  { name: 'Data', icon: Database, page: 'Data', emoji: '💾' },
   { name: 'AI Coach', icon: MessageCircle, page: 'AICoach', emoji: '💬' },
+  { name: 'Customize', icon: Settings, page: 'Customization', emoji: '⚙️' },
 ];
 
 export default function Layout({ children, currentPageName }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
+  const { prefs } = usePreferences();
 
   const isActivePage = (pageName) => {
     return currentPageName === pageName;
   };
 
+  const appTitle = `${prefs.display_name}'s 2026`;
+
   return (
     <div className="min-h-screen bg-slate-950" style={{ minHeight: '100vh' }}>
-      <ThemeApplier />
       {/* Mobile Header */}
       <div className="lg:hidden fixed top-0 left-0 right-0 z-50 bg-slate-900/95 backdrop-blur-lg border-b border-slate-800">
         <div className="flex items-center justify-between px-4 h-16">
           <div className="flex items-center gap-3">
             <Sparkles className="w-6 h-6 text-teal-400" />
-            <span className="font-bold text-white text-lg">Ryan's 2026</span>
+            <span className="font-bold text-white text-lg">{appTitle}</span>
           </div>
           <Button
             variant="ghost"
@@ -87,7 +92,7 @@ export default function Layout({ children, currentPageName }) {
                 <div className="flex items-center gap-3 mb-8">
                   <Sparkles className="w-8 h-8 text-teal-400" />
                   <div>
-                    <h1 className="font-bold text-white text-xl">Ryan's 2026</h1>
+                    <h1 className="font-bold text-white text-xl">{appTitle}</h1>
                     <p className="text-xs text-slate-500">Life Operating System</p>
                   </div>
                 </div>
@@ -127,7 +132,7 @@ export default function Layout({ children, currentPageName }) {
                 <Sparkles className="w-6 h-6 text-white" />
               </div>
               <div>
-                <h1 className="font-bold text-white text-xl">Ryan's 2026</h1>
+                <h1 className="font-bold text-white text-xl">{appTitle}</h1>
                 <p className="text-xs text-slate-500">Life Operating System</p>
               </div>
             </div>

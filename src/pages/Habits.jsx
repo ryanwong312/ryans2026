@@ -11,7 +11,8 @@ import {
   ChevronRight,
   Settings,
   TrendingUp,
-  BarChart3
+  BarChart3,
+  Trash2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -39,13 +40,10 @@ import AdvancedStreaks from '@/components/habits/AdvancedStreaks';
 import StatCard from '@/components/ui/StatCard';
 import AIAssistant from '@/components/ai/AIAssistant';
 import PastDateSelector from '@/components/habits/PastDateSelector';
-import { useGamification } from '@/components/gamification/useGamification';
-import { triggerPointNotification } from '@/components/gamification/PointNotification';
-import PointNotification from '@/components/gamification/PointNotification';
-import { useAchievementProgress } from '@/components/gamification/AchievementProgressTracker';
 
-import { Dumbbell, BookOpen, PenTool, Clock, CheckSquare, Smartphone, Ban, Moon, Heart, Zap, Coffee, Droplets, Sun, Brain, Music, Apple, Bike, Camera, Flame, Footprints, Leaf, Smile, Target, Wind, Download } from 'lucide-react';
-import { downloadCSV } from '@/utils/csvExport';
+import { Dumbbell, BookOpen, PenTool, Clock, CheckSquare, Smartphone, Ban, Moon, Heart, Zap, Coffee, Droplets, Sun, Brain, Music, Apple, Bike, Camera, Flame, Footprints, Leaf, Smile, Target, Wind, Download, Upload, Loader2 } from 'lucide-react';
+import { downloadCSV, parseCSVLine } from '@/utils/csvExport';
+import { calculateDayStreak } from '@/utils/streakCalculator';
 
 const iconOptions = [
   { value: 'Dumbbell', label: 'Workout', icon: Dumbbell },
@@ -78,8 +76,6 @@ const colorOptions = ['#14b8a6', '#6366f1', '#a855f7', '#f97316', '#ec4899', '#1
 
 export default function Habits() {
   const queryClient = useQueryClient();
-  const { awardXP, updateStreak } = useGamification();
-  const { checkAndUpdateAchievements } = useAchievementProgress();
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [showAddHabit, setShowAddHabit] = useState(false);
@@ -117,7 +113,7 @@ export default function Habits() {
 
   const { data: allLogs = [] } = useQuery({
     queryKey: ['all-habit-logs'],
-    queryFn: () => db.entities.HabitLog.list('-date', 1000),
+    queryFn: () => db.entities.HabitLog.list('-date', 5000),
   });
 
   const { data: dayEntries = [] } = useQuery({
@@ -141,7 +137,6 @@ export default function Habits() {
 
   const toggleHabit = async (habit) => {
     const existingLog = getHabitLog(habit.id);
-    const willBeCompleted = existingLog ? !existingLog.completed : true;
     
     if (existingLog) {
       await db.entities.HabitLog.update(existingLog.id, {
@@ -155,50 +150,14 @@ export default function Habits() {
       });
     }
     
-    // Award XP/FC for completing habit (only if today)
-    if (willBeCompleted && format(selectedDate, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd')) {
-      const xp = habit.type === 'build' ? 10 : 15;
-      const fc = habit.type === 'build' ? 2 : 3;
-      await awardXP({ xp, fc, source: `Completed habit: ${habit.name}` });
-      triggerPointNotification(xp, fc, habit.name);
-      await updateStreak();
-      
-      // Check and update achievement progress
-      await checkAndUpdateAchievements('habit', { habit_id: habit.id, completed: true });
-    }
-    
     refetchTodayLogs();
   };
 
-  const calculateStreak = (habitId) => {
-    const sortedLogs = allLogs
+  const calculateStreak = (habitId, referenceDate = selectedDate) => {
+    const completedDates = allLogs
       .filter(log => log.habit_id === habitId && log.completed)
-      .sort((a, b) => new Date(b.date) - new Date(a.date));
-    
-    if (sortedLogs.length === 0) return 0;
-    
-    let streak = 0;
-    let expectedDate = new Date();
-    expectedDate.setHours(0, 0, 0, 0);
-    
-    for (const log of sortedLogs) {
-      const logDate = new Date(log.date);
-      logDate.setHours(0, 0, 0, 0);
-      
-      const diffDays = Math.floor((expectedDate - logDate) / (1000 * 60 * 60 * 24));
-      
-      if (diffDays === 0) {
-        streak++;
-        expectedDate.setDate(expectedDate.getDate() - 1);
-      } else if (diffDays === 1) {
-        streak++;
-        expectedDate.setDate(expectedDate.getDate() - 1);
-      } else {
-        break;
-      }
-    }
-    
-    return streak;
+      .map(log => log.date);
+    return calculateDayStreak(completedDates, referenceDate);
   };
 
   const createHabitMutation = useMutation({
@@ -225,6 +184,20 @@ export default function Habits() {
     },
   });
 
+  const deleteHabitMutation = useMutation({
+    mutationFn: async (habit) => {
+      // Delete all habit logs for this habit, then the habit itself
+      await db.entities.HabitLog.deleteMany({ habit_id: habit.id });
+      await db.entities.Habit.delete(habit.id);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['habits'] });
+      queryClient.invalidateQueries({ queryKey: ['habit-logs-today'] });
+      queryClient.invalidateQueries({ queryKey: ['habit-logs-month'] });
+      queryClient.invalidateQueries({ queryKey: ['all-habit-logs'] });
+    },
+  });
+
   const todayCompleted = todayLogs.filter(log => log.completed).length;
   const completionRate = activeHabits.length > 0 
     ? Math.round((todayCompleted / activeHabits.length) * 100) 
@@ -234,25 +207,97 @@ export default function Habits() {
 
   const exportHabitsCSV = async () => {
     try {
-      const [allHabits, allLogs] = await Promise.all([
+      const [allHabits, exportLogs] = await Promise.all([
         db.entities.Habit.list('order'),
-        db.entities.HabitLog.list('-date', 2000),
+        db.entities.HabitLog.list('-date', 5000),
       ]);
-      const habitNameMap = {};
-      allHabits.forEach(h => { habitNameMap[h.id] = h.name; });
-      const rows = allLogs
-        .filter(log => habitNameMap[log.habit_id])
-        .sort((a, b) => { const d = new Date(b.date) - new Date(a.date); return d === 0 ? a.habit_id.localeCompare(b.habit_id) : d; })
-        .map(log => [
-          log.date,
-          habitNameMap[log.habit_id],
-          log.completed ? 'Yes' : 'No',
-          log.notes || '',
-        ]);
-      downloadCSV(rows, ['Date', 'Habit', 'Completed', 'Notes'], `habits_export_${format(new Date(), 'yyyy-MM-dd')}.csv`);
+      const dates = [...new Set(exportLogs.map(log => log.date))].sort((a, b) => new Date(b) - new Date(a));
+      const headers = ['Date', ...allHabits.map(h => h.name)];
+      const rows = dates.map(date => {
+        const row = [date];
+        allHabits.forEach(habit => {
+          const log = exportLogs.find(l => l.date === date && l.habit_id === habit.id);
+          row.push(log ? (log.completed ? 'Yes' : 'No') : '');
+        });
+        return row;
+      });
+      downloadCSV(rows, headers, `habits_export_${format(new Date(), 'yyyy-MM-dd')}.csv`);
     } catch (err) {
       console.error('CSV export failed:', err);
       alert('Failed to export habits CSV');
+    }
+  };
+
+  const [importingHabits, setImportingHabits] = useState(false);
+
+  const importHabitsCSV = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    setImportingHabits(true);
+    try {
+      const text = await file.text();
+      const lines = text.split(/\r?\n/).filter(l => l.trim());
+      if (lines.length < 2) {
+        alert('No data rows found in CSV');
+        return;
+      }
+
+      const headers = parseCSVLine(lines[0]);
+      const habitNames = headers.slice(1);
+
+      const allHabits = await db.entities.Habit.list('order');
+      const nameToId = {};
+      allHabits.forEach(h => { nameToId[h.name] = h.id; });
+
+      const existingLogs = await db.entities.HabitLog.list('-date', 5000);
+      const existingMap = {};
+      existingLogs.forEach(l => { existingMap[`${l.date}_${l.habit_id}`] = l; });
+
+      const toCreate = [];
+      const toUpdate = [];
+
+      for (let i = 1; i < lines.length; i++) {
+        const values = parseCSVLine(lines[i]);
+        const date = values[0];
+        if (!date) continue;
+
+        for (let j = 0; j < habitNames.length; j++) {
+          const habitName = habitNames[j];
+          const habitId = nameToId[habitName];
+          if (!habitId) continue;
+
+          const rawValue = (values[j + 1] || '').trim().toLowerCase();
+          if (rawValue === '') continue;
+
+          const completed = rawValue === 'yes' || rawValue === 'true' || rawValue === '1';
+          const key = `${date}_${habitId}`;
+          const existing = existingMap[key];
+
+          if (existing) {
+            if (existing.completed !== completed) {
+              toUpdate.push({ id: existing.id, completed });
+            }
+          } else {
+            toCreate.push({ habit_id: habitId, date, completed });
+          }
+        }
+      }
+
+      if (toCreate.length > 0) await db.entities.HabitLog.bulkCreate(toCreate);
+      if (toUpdate.length > 0) await db.entities.HabitLog.bulkUpdate(toUpdate);
+
+      queryClient.invalidateQueries({ queryKey: ['habit-logs-today'] });
+      queryClient.invalidateQueries({ queryKey: ['habit-logs-month'] });
+      queryClient.invalidateQueries({ queryKey: ['all-habit-logs'] });
+
+      alert(`Imported ${toCreate.length + toUpdate.length} habit records (${toCreate.length} new, ${toUpdate.length} updated)!`);
+    } catch (err) {
+      console.error('Import failed:', err);
+      alert('Failed to import habits CSV');
+    } finally {
+      setImportingHabits(false);
+      e.target.value = '';
     }
   };
 
@@ -274,6 +319,25 @@ export default function Habits() {
               <Download className="w-4 h-4" />
               <span className="hidden sm:inline">CSV</span>
             </Button>
+            <label className="cursor-pointer">
+              <input
+                type="file"
+                accept=".csv"
+                onChange={importHabitsCSV}
+                className="hidden"
+                disabled={importingHabits}
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                className="border-slate-600 gap-2 pointer-events-none"
+                disabled={importingHabits}
+                type="button"
+              >
+                {importingHabits ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                <span className="hidden sm:inline">Import</span>
+              </Button>
+            </label>
             <Button 
               onClick={() => setShowAddHabit(true)}
               className="bg-gradient-to-r from-teal-500 to-emerald-500 gap-2"
@@ -329,7 +393,7 @@ export default function Habits() {
             <PastDateSelector 
               selectedDate={selectedDate}
               onDateChange={setSelectedDate}
-              maxDaysBack={30}
+              maxDaysBack={365}
             />
             <div className="grid md:grid-cols-2 gap-6">
               <div>
@@ -462,6 +526,18 @@ export default function Habits() {
                     >
                       Edit
                     </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        if (confirm(`Delete "${habit.name}" and all its logged data? This cannot be undone.`)) {
+                          deleteHabitMutation.mutate(habit);
+                        }
+                      }}
+                      className="text-rose-400 hover:text-rose-300"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
                   </div>
                 </motion.div>
               ))}
@@ -587,7 +663,8 @@ export default function Habits() {
                 ? updateHabitMutation.mutate({ id: editingHabit.id, data: editingHabit })
                 : createHabitMutation.mutate(newHabit)
               }
-              className="w-full bg-gradient-to-r from-teal-500 to-emerald-500"
+              disabled={editingHabit ? !editingHabit.name?.trim() : !newHabit.name?.trim()}
+              className="w-full bg-gradient-to-r from-teal-500 to-emerald-500 disabled:opacity-50"
             >
               {editingHabit ? 'Save Changes' : 'Create Habit'}
             </Button>
@@ -595,7 +672,6 @@ export default function Habits() {
         </DialogContent>
       </Dialog>
 
-      <PointNotification />
       <AIAssistant context="habits" contextData={{ habitCount: habits.length }} />
     </div>
   );

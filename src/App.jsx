@@ -7,6 +7,9 @@ import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
 import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
+import { PreferencesProvider } from '@/components/customization/PreferencesProvider';
+import Data from './pages/Data';
+import WeeklyReview from './pages/WeeklyReview';
 
 const { Pages, Layout, mainPage } = pagesConfig;
 const mainPageKey = mainPage ?? Object.keys(Pages)[0];
@@ -58,6 +61,8 @@ const AuthenticatedApp = () => {
           }
         />
       ))}
+      <Route path="/Data" element={<LayoutWrapper currentPageName="Data"><Data /></LayoutWrapper>} />
+      <Route path="/WeeklyReview" element={<LayoutWrapper currentPageName="WeeklyReview"><WeeklyReview /></LayoutWrapper>} />
       <Route path="*" element={<PageNotFound />} />
     </Routes>
   );
@@ -68,11 +73,13 @@ function App() {
   return (
     <AuthProvider>
       <QueryClientProvider client={queryClientInstance}>
+        <PreferencesProvider>
         <Router>
           <NavigationTracker />
           <AuthenticatedApp />
         </Router>
         <Toaster />
+        </PreferencesProvider>
       </QueryClientProvider>
     </AuthProvider>
   )

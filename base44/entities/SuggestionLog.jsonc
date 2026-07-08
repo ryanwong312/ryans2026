@@ -1,0 +1,41 @@
+{
+  "name": "SuggestionLog",
+  "type": "object",
+  "properties": {
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the suggestion was generated"
+    },
+    "suggestion_text": {
+      "type": "string",
+      "description": "The suggested action"
+    },
+    "reason": {
+      "type": "string",
+      "description": "Why this action was suggested"
+    },
+    "action_link": {
+      "type": "string",
+      "description": "Navigation link for the suggested action"
+    },
+    "context_snapshot": {
+      "type": "object",
+      "description": "JSON snapshot of context data used"
+    },
+    "user_action": {
+      "type": "string",
+      "enum": [
+        "dismissed",
+        "accepted",
+        "pending"
+      ],
+      "default": "pending",
+      "description": "What the user did with the suggestion"
+    }
+  },
+  "required": [
+    "suggestion_text"
+  ],
+  "rls": {}
+}

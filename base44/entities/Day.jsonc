@@ -8,15 +8,8 @@
       "description": "The date for this day record"
     },
     "mood": {
-      "type": "string",
-      "enum": [
-        "amazing",
-        "good",
-        "okay",
-        "low",
-        "rough"
-      ],
-      "description": "Overall mood for the day"
+      "type": "number",
+      "description": "Overall mood for the day on a 1-7 scale. New entries use integers 1-7; migrated historical entries use float values (1.0, 2.5, 4.0, 5.5, 7.0) to preserve weighted averages."
     },
     "one_interesting_thing": {
       "type": "string",

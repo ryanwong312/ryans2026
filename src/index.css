@@ -84,3 +84,58 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* ===== Customization: Light Theme Overrides ===== */
+.theme-light body,
+.theme-light #root {
+  background: #f1f5f9 !important;
+  color: #0f172a;
+}
+
+.theme-light .bg-slate-950 { background-color: #f1f5f9 !important; }
+.theme-light .bg-slate-900 { background-color: #ffffff !important; }
+.theme-light .bg-slate-900\/50 { background-color: rgba(255,255,255,0.6) !important; }
+.theme-light .bg-slate-900\/95 { background-color: rgba(255,255,255,0.95) !important; }
+.theme-light .bg-slate-800\/30 { background-color: rgba(241,245,249,0.6) !important; }
+.theme-light .bg-slate-800\/50 { background-color: rgba(241,245,249,0.8) !important; }
+.theme-light .bg-slate-800 { background-color: #e2e8f0 !important; }
+.theme-light .bg-slate-700\/50 { background-color: rgba(226,232,240,0.6) !important; }
+.theme-light .bg-slate-900\/50 { background-color: rgba(248,250,252,0.8) !important; }
+
+.theme-light .text-white { color: #0f172a !important; }
+.theme-light .text-slate-400 { color: #64748b !important; }
+.theme-light .text-slate-500 { color: #94a3b8 !important; }
+.theme-light .text-slate-600 { color: #cbd5e1 !important; }
+
+.theme-light .border-slate-700\/50 { border-color: rgba(203,213,225,0.8) !important; }
+.theme-light .border-slate-700 { border-color: #cbd5e1 !important; }
+.theme-light .border-slate-800 { border-color: #e2e8f0 !important; }
+.theme-light .border-slate-800\/50 { border-color: rgba(226,232,240,0.6) !important; }
+.theme-light .border-slate-600 { border-color: #94a3b8 !important; }
+.theme-light .border-input { border-color: #cbd5e1 !important; }
+
+.theme-light .bg-gradient-to-br.from-slate-950.via-slate-900.to-slate-950 {
+  background: linear-gradient(to bottom right, #f1f5f9, #ffffff, #f1f5f9) !important;
+}
+
+.theme-light .bg-slate-700 { background-color: #cbd5e1 !important; }
+.theme-light .bg-slate-600 { background-color: #94a3b8 !important; }
+.theme-light .bg-slate-900\/30 { background-color: rgba(241,245,249,0.4) !important; }
+
+.theme-light .prose-invert { --tw-prose-body: #334155 !important; --tw-prose-headings: #0f172a !important; }
+
+/* ===== Customization: Custom Text Color ===== */
+.custom-text-color .text-white { color: var(--user-text-color) !important; }
+
+/* ===== Customization: Custom Accent Color ===== */
+.custom-accent .from-teal-500 { --tw-gradient-from: var(--user-accent-from) var(--tw-gradient-from-position) !important; }
+.custom-accent .to-emerald-500 { --tw-gradient-to: var(--user-accent-to) var(--tw-gradient-to-position) !important; }
+.custom-accent .from-teal-500\/20 { --tw-gradient-from: rgb(var(--user-accent-from-rgb) / 0.2) var(--tw-gradient-from-position) !important; }
+.custom-accent .to-emerald-500\/20 { --tw-gradient-to: rgb(var(--user-accent-to-rgb) / 0.2) var(--tw-gradient-to-position) !important; }
+.custom-accent .text-teal-400 { color: var(--user-accent-from) !important; }
+.custom-accent .text-teal-300 { color: var(--user-accent-from) !important; }
+.custom-accent .border-teal-500\/30 { border-color: rgb(var(--user-accent-from-rgb) / 0.3) !important; }
+.custom-accent .border-teal-500\/40 { border-color: rgb(var(--user-accent-from-rgb) / 0.4) !important; }
+.custom-accent .bg-teal-500\/20 { background-color: rgb(var(--user-accent-from-rgb) / 0.2) !important; }
+.custom-accent .bg-teal-500\/10 { background-color: rgb(var(--user-accent-from-rgb) / 0.1) !important; }
+.custom-accent .bg-teal-500 { background-color: var(--user-accent-from) !important; }

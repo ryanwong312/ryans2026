@@ -1,0 +1,75 @@
+{
+  "name": "WeeklyReport",
+  "type": "object",
+  "properties": {
+    "week_start": {
+      "type": "string",
+      "format": "date",
+      "description": "Monday of the report week"
+    },
+    "week_end": {
+      "type": "string",
+      "format": "date",
+      "description": "Sunday of the report week"
+    },
+    "summary": {
+      "type": "string",
+      "description": "AI-generated narrative summary"
+    },
+    "stats": {
+      "type": "object",
+      "description": "Computed statistics for the week",
+      "properties": {
+        "study_hours": {
+          "type": "number"
+        },
+        "running_distance": {
+          "type": "number"
+        },
+        "running_count": {
+          "type": "number"
+        },
+        "habit_completion_rate": {
+          "type": "number"
+        },
+        "longest_streak": {
+          "type": "number"
+        },
+        "avg_sleep_hours": {
+          "type": "number"
+        },
+        "top_mood": {
+          "type": "string"
+        },
+        "assignments_completed": {
+          "type": "number"
+        },
+        "assignments_overdue": {
+          "type": "number"
+        },
+        "journal_entries": {
+          "type": "number"
+        },
+        "journal_word_count": {
+          "type": "number"
+        },
+        "active_goals": {
+          "type": "number"
+        },
+        "tip": {
+          "type": "string"
+        }
+      }
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the report was generated"
+    }
+  },
+  "required": [
+    "week_start",
+    "week_end"
+  ],
+  "rls": {}
+}

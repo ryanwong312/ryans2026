@@ -16,10 +16,6 @@ import {
   CircleDot
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { useGamification } from '@/components/gamification/useGamification';
-import { triggerPointNotification } from '@/components/gamification/PointNotification';
-import PointNotification from '@/components/gamification/PointNotification';
-import { useAchievementProgress } from '@/components/gamification/AchievementProgressTracker';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -67,8 +63,6 @@ const feelingOptions = [
 
 export default function Running() {
   const queryClient = useQueryClient();
-  const { awardXP } = useGamification();
-  const { checkAndUpdateAchievements } = useAchievementProgress();
   const [currentWeek, setCurrentWeek] = useState(new Date());
   const [showWorkoutDialog, setShowWorkoutDialog] = useState(false);
   const [showRaceDialog, setShowRaceDialog] = useState(false);
@@ -290,17 +284,6 @@ export default function Running() {
       updateWorkoutMutation.mutate({ id: editingWorkout.id, data });
     } else {
       createWorkoutMutation.mutate(data);
-      
-      // Award XP for logging workout
-      if (data.actual_distance_km) {
-        const xp = Math.floor(data.actual_distance_km * 5);
-        const fc = Math.floor(data.actual_distance_km * 1);
-        await awardXP({ xp, fc, source: `Ran ${data.actual_distance_km}km` });
-        triggerPointNotification(xp, fc, `${data.actual_distance_km}km Run`);
-        
-        // Check and update achievement progress
-        await checkAndUpdateAchievements('running', data);
-      }
     }
   };
 
@@ -713,7 +696,6 @@ export default function Running() {
         </DialogContent>
       </Dialog>
 
-      <PointNotification />
       <AIAssistant context="running" contextData={{}} />
     </div>
   );

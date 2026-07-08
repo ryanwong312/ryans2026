@@ -4,7 +4,7 @@ import { ChevronLeft, ChevronRight, Calendar } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 
-export default function PastDateSelector({ selectedDate, onDateChange, maxDaysBack = 30 }) {
+export default function PastDateSelector({ selectedDate, onDateChange, maxDaysBack = 365 }) {
   const today = new Date();
   const minDate = subDays(today, maxDaysBack);
   const isPastDate = format(selectedDate, 'yyyy-MM-dd') < format(today, 'yyyy-MM-dd');

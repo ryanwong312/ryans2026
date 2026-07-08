@@ -1,0 +1,44 @@
+{
+  "name": "UserPreference",
+  "type": "object",
+  "properties": {
+    "display_name": {
+      "type": "string",
+      "description": "Name shown in greetings and app title"
+    },
+    "theme_mode": {
+      "type": "string",
+      "enum": [
+        "dark",
+        "light"
+      ],
+      "default": "dark",
+      "description": "Light or dark theme"
+    },
+    "font_size": {
+      "type": "number",
+      "default": 16,
+      "description": "Base font size in pixels"
+    },
+    "font_color": {
+      "type": "string",
+      "default": "#ffffff",
+      "description": "Primary text color override (hex)"
+    },
+    "accent_color": {
+      "type": "string",
+      "enum": [
+        "teal",
+        "blue",
+        "purple",
+        "orange",
+        "pink",
+        "indigo"
+      ],
+      "default": "teal",
+      "description": "Accent gradient color theme"
+    }
+  },
+  "required": [],
+  "rls": {}
+}
