@@ -3,39 +3,93 @@ import { createClient } from '@base44/sdk';
 // This function will be called from your frontend
 export async function syncGoogleCalendar(accessToken, calendarId = 'primary') {
   try {
-    // 1. Fetch events from Google Calendar
-    const response = await fetch(
-      `https://www.googleapis.com/calendar/v3/calendars/${calendarId}/events?maxResults=50&orderBy=startTime&singleEvents=true`,
-      {
+    // Set date range: from 6 months ago to 12 months in the future
+    const now = new Date();
+    const sixMonthsAgo = new Date(now);
+    sixMonthsAgo.setMonth(now.getMonth() - 6);
+    const twelveMonthsAhead = new Date(now);
+    twelveMonthsAhead.setMonth(now.getMonth() + 12);
+
+    const timeMin = sixMonthsAgo.toISOString();
+    const timeMax = twelveMonthsAhead.toISOString();
+
+    let allEvents = [];
+    let nextPageToken = null;
+    let pageCount = 0;
+
+    do {
+      // Build URL with pagination token
+      let url = `https://www.googleapis.com/calendar/v3/calendars/${calendarId}/events?` +
+        `maxResults=250&` +
+        `orderBy=startTime&` +
+        `singleEvents=true&` +
+        `timeMin=${encodeURIComponent(timeMin)}&` +
+        `timeMax=${encodeURIComponent(timeMax)}`;
+
+      if (nextPageToken) {
+        url += `&pageToken=${encodeURIComponent(nextPageToken)}`;
+      }
+
+      const response = await fetch(url, {
         headers: {
           'Authorization': `Bearer ${accessToken}`,
           'Content-Type': 'application/json',
         }
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error?.message || 'Failed to fetch Google Calendar events');
       }
-    );
 
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error?.message || 'Failed to fetch Google Calendar events');
-    }
+      const data = await response.json();
+      const items = data.items || [];
+      allEvents = allEvents.concat(items);
+      nextPageToken = data.nextPageToken || null;
+      pageCount++;
 
-    const data = await response.json();
-    const events = data.items || [];
+      // Safety: limit to 10 pages (2500 events) to avoid infinite loops
+      if (pageCount > 10) break;
+
+    } while (nextPageToken);
 
     // 2. Convert Google events to your app's format
-    const convertedEvents = events.map(event => ({
-      title: event.summary || 'Untitled Event',
-      date: event.start?.date || event.start?.dateTime?.split('T')[0] || new Date().toISOString().split('T')[0],
-      start_time: event.start?.dateTime ? new Date(event.start.dateTime).toTimeString().slice(0, 5) : '',
-      end_time: event.end?.dateTime ? new Date(event.end.dateTime).toTimeString().slice(0, 5) : '',
-      all_day: !event.start?.dateTime,
-      description: event.description || '',
-      location: event.location || '',
-      status: 'confirmed',
-      category: 'personal',
-      tags: ['google-sync'],
-      google_event_id: event.id,
-    }));
+    const convertedEvents = allEvents.map(event => {
+      // Determine if it's an all-day event (no dateTime)
+      const start = event.start;
+      const end = event.end;
+      const isAllDay = !!start?.date; // if date field exists, it's all-day
+
+      let date, startTime, endTime;
+
+      if (isAllDay) {
+        // All-day events: use the date as-is (YYYY-MM-DD)
+        date = start.date;
+        startTime = '';
+        endTime = '';
+      } else {
+        // Timed events: extract date and time
+        const startDateTime = new Date(start.dateTime);
+        const endDateTime = new Date(end.dateTime);
+        date = startDateTime.toISOString().split('T')[0];
+        startTime = startDateTime.toTimeString().slice(0, 5);
+        endTime = endDateTime.toTimeString().slice(0, 5);
+      }
+
+      return {
+        title: event.summary || 'Untitled Event',
+        date: date,
+        start_time: startTime,
+        end_time: endTime,
+        all_day: isAllDay,
+        description: event.description || '',
+        location: event.location || '',
+        status: event.status === 'cancelled' ? 'cancelled' : 'confirmed',
+        category: 'personal', // default; you can add logic to map categories
+        tags: ['google-sync'],
+        google_event_id: event.id,
+      };
+    });
 
     // 3. Save to your Base44 app
     const db = createClient({
@@ -53,7 +107,7 @@ export async function syncGoogleCalendar(accessToken, calendarId = 'primary') {
       }
     }
 
-    return { success: true, imported, total: events.length };
+    return { success: true, imported, total: allEvents.length };
   } catch (error) {
     console.error('Google Calendar sync error:', error);
     return { success: false, error: error.message };
