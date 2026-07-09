@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/components/ui/use-toast';
 import { syncGoogleCalendar } from '@/lib/google-calendar';
+import { db } from '@/lib/query-client'; // import db
 
 export default function OAuthCallback() {
   const navigate = useNavigate();
@@ -32,6 +33,12 @@ export default function OAuthCallback() {
         .then(async data => {
           if (data.error) throw new Error(data.error);
           const result = await syncGoogleCalendar(data.access_token);
+          
+          // Debug: Log saved events
+          const savedEvents = await db.entities.CalendarEvent.list('-date');
+          console.log('Saved events count:', savedEvents.length);
+          console.log('First 3 events:', savedEvents.slice(0, 3));
+          
           toast({
             title: result.success ? '✅ Sync Complete!' : '❌ Sync Failed',
             description: result.success 
@@ -51,7 +58,6 @@ export default function OAuthCallback() {
           navigate('/calendar');
         });
     } else {
-      // No code, redirect
       navigate('/calendar');
     }
   }, [navigate, toast]);

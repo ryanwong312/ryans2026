@@ -1,6 +1,6 @@
 const db = globalThis.__B44_DB__ || { auth:{ isAuthenticated: async()=>false, me: async()=>null }, entities:new Proxy({}, { get:()=>({ filter:async()=>[], get:async()=>null, create:async()=>({}), update:async()=>({}), delete:async()=>({}) }) }), integrations:{ Core:{ UploadFile:async()=>({ file_url:'' }) } } };
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { motion } from 'framer-motion';
@@ -33,10 +33,37 @@ export default function Calendar() {
   const calendarEnd = endOfWeek(monthEnd, { weekStartsOn: 1 });
   const calendarDays = eachDayOfInterval({ start: calendarStart, end: calendarEnd });
 
-  const { data: events = [] } = useQuery({ queryKey: ['calendar-events', format(monthStart, 'yyyy-MM')], queryFn: () => db.entities.CalendarEvent.filter({ date: { $gte: format(calendarStart, 'yyyy-MM-dd'), $lte: format(calendarEnd, 'yyyy-MM-dd') } }) });
+  // ----- DEBUG: Log events when they are fetched -----
+  const { data: events = [], refetch: refetchEvents } = useQuery({
+    queryKey: ['calendar-events', format(monthStart, 'yyyy-MM')],
+    queryFn: async () => {
+      const result = await db.entities.CalendarEvent.filter({ 
+        date: { $gte: format(calendarStart, 'yyyy-MM-dd'), $lte: format(calendarEnd, 'yyyy-MM-dd') }
+      });
+      console.log(`📅 Events for ${format(monthStart, 'yyyy-MM')}:`, result);
+      return result;
+    },
+  });
+
+  // Also fetch all events (no date filter) to see total count
+  const { data: allEvents = [] } = useQuery({
+    queryKey: ['all-calendar-events'],
+    queryFn: async () => {
+      const result = await db.entities.CalendarEvent.list('-date');
+      console.log(`📅 TOTAL EVENTS IN DATABASE: ${result.length}`, result.slice(0, 5));
+      return result;
+    },
+    staleTime: 0,
+  });
+
   const { data: workouts = [] } = useQuery({ queryKey: ['workouts-calendar', format(monthStart, 'yyyy-MM')], queryFn: () => db.entities.Workout.filter({ date: { $gte: format(calendarStart, 'yyyy-MM-dd'), $lte: format(calendarEnd, 'yyyy-MM-dd') } }) });
   const { data: assignments = [] } = useQuery({ queryKey: ['assignments-calendar'], queryFn: () => db.entities.Assignment.filter({ due_date: { $gte: format(calendarStart, 'yyyy-MM-dd'), $lte: format(calendarEnd, 'yyyy-MM-dd') } }) });
   const { data: studySessions = [] } = useQuery({ queryKey: ['study-sessions-calendar', format(monthStart, 'yyyy-MM')], queryFn: () => db.entities.StudySession.filter({ date: { $gte: format(calendarStart, 'yyyy-MM-dd'), $lte: format(calendarEnd, 'yyyy-MM-dd') } }) });
+
+  // ----- DEBUG: Log after events change -----
+  useEffect(() => {
+    console.log(`🔍 Calendar query results: ${events.length} events for this month.`);
+  }, [events]);
 
   const getEventsForDay = (date) => {
     const dateStr = format(date, 'yyyy-MM-dd');
@@ -69,6 +96,8 @@ export default function Calendar() {
           <div className="flex gap-2">
             <Button variant="outline" size="sm" onClick={() => { setCurrentMonth(new Date()); setSelectedDate(new Date()); }} className="border-slate-600">Today</Button>
             <Button onClick={handleAddEvent} className="bg-gradient-to-r from-teal-500 to-emerald-500 gap-2"><Plus className="w-4 h-4" />Add Event</Button>
+            {/* Debug button to log all events */}
+            <Button variant="outline" size="sm" onClick={() => { console.log('All events:', allEvents); }} className="border-slate-600">Log All Events</Button>
           </div>
         </div>
 
