@@ -2,7 +2,7 @@ const db = globalThis.__B44_DB__ || { auth:{ isAuthenticated: async()=>false, me
 
 import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-
+import { useToast } from '@/components/ui/use-toast';
 import { motion } from 'framer-motion';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isSameMonth, addMonths, subMonths, startOfWeek, endOfWeek } from 'date-fns';
 import { ChevronLeft, ChevronRight, Plus } from 'lucide-react';
@@ -21,6 +21,7 @@ const categoryColors = { academic: 'bg-indigo-500', fitness: 'bg-emerald-500', s
 
 export default function Calendar() {
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [showEventDialog, setShowEventDialog] = useState(false);
@@ -67,6 +68,52 @@ export default function Calendar() {
   const updateEventMutation = useMutation({ mutationFn: ({ id, data }) => db.entities.CalendarEvent.update(id, data), onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['calendar-events'] }); resetEventForm(); setShowEventDialog(false); setEditingEvent(null); } });
   const deleteEventMutation = useMutation({ mutationFn: (id) => db.entities.CalendarEvent.delete(id), onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['calendar-events'] }); resetEventForm(); setShowEventDialog(false); setEditingEvent(null); } });
 
+  // ----- Clean Duplicates Mutation -----
+  const cleanDuplicatesMutation = useMutation({
+    mutationFn: async () => {
+      const allEventsList = await db.entities.CalendarEvent.list('-date');
+      const seen = new Map();
+      const toDelete = [];
+      allEventsList.forEach(event => {
+        const key = `${event.title}|${event.date}|${event.start_time}|${event.all_day}`;
+        if (seen.has(key)) {
+          const existing = seen.get(key);
+          // Keep the one with google_event_id if available, else keep the first
+          if (event.google_event_id && !existing.google_event_id) {
+            // Keep the new one (with google_event_id), delete the old
+            toDelete.push(existing.id);
+            seen.set(key, event);
+          } else {
+            // Delete the current duplicate
+            toDelete.push(event.id);
+          }
+        } else {
+          seen.set(key, event);
+        }
+      });
+      // Delete in batches to avoid too many requests
+      for (const id of toDelete) {
+        await db.entities.CalendarEvent.delete(id);
+      }
+      return toDelete.length;
+    },
+    onSuccess: (count) => {
+      toast({
+        title: `🧹 Removed ${count} duplicate events`,
+        description: count === 0 ? 'No duplicates found.' : 'Your calendar is now clean.',
+      });
+      queryClient.invalidateQueries({ queryKey: ['calendar-events'] });
+      queryClient.invalidateQueries({ queryKey: ['all-calendar-events'] });
+    },
+    onError: (error) => {
+      toast({
+        title: 'Error cleaning duplicates',
+        description: error.message,
+        variant: 'destructive',
+      });
+    }
+  });
+
   const resetEventForm = () => setEventForm({ title: '', date: format(selectedDate, 'yyyy-MM-dd'), start_time: '', end_time: '', all_day: false, category: 'personal', status: 'confirmed', location: '', description: '', tags: [] });
   const handleDayClick = (date) => setSelectedDate(date);
   const handleAddEvent = () => { setEventForm({ ...eventForm, date: format(selectedDate, 'yyyy-MM-dd') }); setEditingEvent(null); setShowEventDialog(true); };
@@ -98,7 +145,15 @@ export default function Calendar() {
           <Button variant="outline" size="sm" onClick={() => { console.log('All events:', allEvents); }} className="border-slate-600 text-slate-300 hover:bg-slate-800">
             Log All Events
           </Button>
-          {/* Google Calendar Sync - moved here, styled to match */}
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => cleanDuplicatesMutation.mutate()} 
+            className="border-slate-600 text-slate-300 hover:bg-slate-800"
+            disabled={cleanDuplicatesMutation.isPending}
+          >
+            {cleanDuplicatesMutation.isPending ? 'Cleaning...' : 'Clean Duplicates'}
+          </Button>
           <div className="ml-auto">
             <GoogleCalendarSync />
           </div>
