@@ -2,14 +2,7 @@ import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/components/ui/use-toast';
 import { syncGoogleCalendar, getUserInfo } from '@/lib/google-calendar';
-
-// Allowed emails – change these to your own and any other allowed accounts
-const ALLOWED_EMAILS = [
-  'wongryan312@gmail.com',
-  'wongryanhk@gmail.com',
-  // 'thenewryanwong@gmail.com', // example
-  // add more emails if needed
-];
+import { ALLOWED_EMAILS } from '@/config/allowedEmails';
 
 export default function OAuthCallback() {
   const navigate = useNavigate();
@@ -19,7 +12,7 @@ export default function OAuthCallback() {
     const urlParams = new URLSearchParams(window.location.search);
     const code = urlParams.get('code');
     const error = urlParams.get('error');
-    const state = urlParams.get('state') || 'sync'; // 'login' or 'sync'
+    const state = urlParams.get('state') || 'sync';
 
     if (error) {
       toast({
@@ -36,7 +29,6 @@ export default function OAuthCallback() {
       return;
     }
 
-    // Exchange code for tokens
     fetch('/api/auth/google/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -47,25 +39,21 @@ export default function OAuthCallback() {
         if (data.error) throw new Error(data.error);
         const { access_token, refresh_token, expires_in } = data;
 
-        // If this is a login flow, verify the user's email
         if (state === 'login') {
           const userInfo = await getUserInfo(access_token);
           const email = userInfo.email;
           if (!email) throw new Error('No email returned from Google');
 
-          // Check if email is allowed
           if (!ALLOWED_EMAILS.includes(email)) {
             toast({
               title: 'Access Denied',
               description: `Your email (${email}) is not authorized.`,
               variant: 'destructive',
             });
-            // Redirect to login page
             navigate('/login');
             return;
           }
 
-          // Store authentication info
           localStorage.setItem('auth_user', JSON.stringify({
             email,
             name: userInfo.name,
@@ -79,11 +67,11 @@ export default function OAuthCallback() {
             title: '✅ Welcome!',
             description: `Signed in as ${email}.`,
           });
-          navigate('/'); // go to dashboard
+          navigate('/');
           return;
         }
 
-        // Otherwise, it's a calendar sync flow
+        // Calendar sync flow
         const result = await syncGoogleCalendar(access_token);
         toast({
           title: result.success ? '✅ Sync Complete!' : '❌ Sync Failed',
