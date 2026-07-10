@@ -5,7 +5,9 @@ import { syncGoogleCalendar, getUserInfo } from '@/lib/google-calendar';
 
 // Allowed emails – change these to your own and any other allowed accounts
 const ALLOWED_EMAILS = [
-  'wongryan312@gmail.com', // example
+  'wongryan312@gmail.com',
+  'wongryanhk@gmail.com',
+  'thenewryanwong@gmail.com', // example
   // add more emails if needed
 ];
 
