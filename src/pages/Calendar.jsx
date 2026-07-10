@@ -16,6 +16,7 @@ import RecurringEventForm from '@/components/calendar/RecurringEventForm';
 import { Switch } from '@/components/ui/switch';
 import CalendarEventItem from '@/components/calendar/CalendarEventItem';
 import GoogleCalendarSync from '@/components/calendar/GoogleCalendarSync';
+import AccountManager from '@/components/calendar/AccountManager';
 
 const categoryColors = { academic: 'bg-indigo-500', fitness: 'bg-emerald-500', social: 'bg-purple-500', personal: 'bg-teal-500', work: 'bg-amber-500' };
 
@@ -28,6 +29,14 @@ export default function Calendar() {
   const [editingEvent, setEditingEvent] = useState(null);
   const [eventForm, setEventForm] = useState({ title: '', date: format(new Date(), 'yyyy-MM-dd'), start_time: '', end_time: '', all_day: false, category: 'personal', status: 'confirmed', location: '', description: '', tags: [] });
 
+  // Account filter state
+  const [filterAccounts, setFilterAccounts] = useState(() => {
+    try {
+      const tokens = JSON.parse(localStorage.getItem('sync_tokens') || '{}');
+      return Object.keys(tokens);
+    } catch { return []; }
+  });
+
   const monthStart = startOfMonth(currentMonth);
   const monthEnd = endOfMonth(currentMonth);
   const calendarStart = startOfWeek(monthStart, { weekStartsOn: 1 });
@@ -35,11 +44,15 @@ export default function Calendar() {
   const calendarDays = eachDayOfInterval({ start: calendarStart, end: calendarEnd });
 
   const { data: events = [], refetch: refetchEvents } = useQuery({
-    queryKey: ['calendar-events', format(monthStart, 'yyyy-MM')],
+    queryKey: ['calendar-events', format(monthStart, 'yyyy-MM'), filterAccounts],
     queryFn: async () => {
-      const result = await db.entities.CalendarEvent.filter({ 
+      let result = await db.entities.CalendarEvent.filter({ 
         date: { $gte: format(calendarStart, 'yyyy-MM-dd'), $lte: format(calendarEnd, 'yyyy-MM-dd') }
       });
+      // Filter by selected accounts
+      if (filterAccounts.length > 0) {
+        result = result.filter(e => filterAccounts.includes(e.synced_by));
+      }
       return result;
     },
   });
@@ -51,6 +64,14 @@ export default function Calendar() {
       return result;
     },
     staleTime: 0,
+  });
+
+  // Get list of connected accounts from localStorage
+  const [connectedAccounts, setConnectedAccounts] = useState(() => {
+    try {
+      const tokens = JSON.parse(localStorage.getItem('sync_tokens') || '{}');
+      return Object.values(tokens);
+    } catch { return []; }
   });
 
   const { data: workouts = [] } = useQuery({ queryKey: ['workouts-calendar', format(monthStart, 'yyyy-MM')], queryFn: () => db.entities.Workout.filter({ date: { $gte: format(calendarStart, 'yyyy-MM-dd'), $lte: format(calendarEnd, 'yyyy-MM-dd') } }) });
@@ -120,6 +141,13 @@ export default function Calendar() {
 
   const weekDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
+  // Handler for account changes
+  const handleAccountsChange = (newTokens) => {
+    const emails = Object.keys(newTokens);
+    setFilterAccounts(emails);
+    setConnectedAccounts(Object.values(newTokens));
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 p-4 md:p-8">
       <div className="max-w-7xl mx-auto">
@@ -131,9 +159,37 @@ export default function Calendar() {
           </div>
         </div>
 
+        {/* Account Filter Toggles */}
+        {connectedAccounts.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2 mb-4 p-3 rounded-xl bg-slate-800/30 border border-slate-700/50">
+            <span className="text-xs font-medium text-slate-400 mr-2">Show:</span>
+            {connectedAccounts.map(acc => {
+              const isActive = filterAccounts.includes(acc.email);
+              return (
+                <button
+                  key={acc.email}
+                  onClick={() => {
+                    if (isActive) {
+                      setFilterAccounts(filterAccounts.filter(e => e !== acc.email));
+                    } else {
+                      setFilterAccounts([...filterAccounts, acc.email]);
+                    }
+                  }}
+                  className={`px-3 py-1.5 rounded-full text-xs font-medium transition ${
+                    isActive 
+                      ? 'bg-teal-500 text-white' 
+                      : 'bg-slate-700/50 text-slate-400 hover:bg-slate-700'
+                  }`}
+                >
+                  {isActive ? '✓' : '○'} {acc.email}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
         {/* Action Buttons Row */}
         <div className="flex flex-wrap items-center gap-2 mb-6">
-          {/* Today – now matching the white bg, dark text style */}
           <Button 
             variant="outline" 
             size="sm" 
@@ -206,17 +262,24 @@ export default function Calendar() {
           </div>
 
           <div className="lg:col-span-1">
-            <div className="sticky top-8 rounded-xl bg-slate-800/30 border border-slate-700/50 p-5">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold text-white">{format(selectedDate, 'MMMM d')}</h2>
-                <Button size="sm" onClick={handleAddEvent} className="bg-teal-500/20 text-teal-400 hover:bg-teal-500/30"><Plus className="w-4 h-4" /></Button>
-              </div>
-              <div className="space-y-4">
-                {selectedDayData.events.length > 0 && <div><h3 className="text-sm font-medium text-slate-400 mb-2">Events</h3><div className="space-y-2">{selectedDayData.events.map(event => <CalendarEventItem key={event.id} event={event} compact onClick={() => handleEditEvent(event)} />)}</div></div>}
-                {selectedDayData.studySessions.length > 0 && <div><h3 className="text-sm font-medium text-slate-400 mb-2">Study Sessions</h3><div className="space-y-2">{selectedDayData.studySessions.map(session => <div key={session.id} className="p-3 rounded-lg bg-indigo-500/10 border border-indigo-500/20"><p className="text-sm font-medium text-white">{session.name || session.topic || 'Study Session'}</p><p className="text-xs text-slate-400">{session.duration_minutes} min{session.start_time ? ' · ' + session.start_time : ''}</p>{session.tags?.length > 0 && <div className="flex gap-1 mt-1">{session.tags.map(t => <span key={t} className="px-1 py-0.5 text-xs rounded bg-indigo-500/20 text-indigo-300">#{t}</span>)}</div>}</div>)}</div></div>}
-                {selectedDayData.workouts.length > 0 && <div><h3 className="text-sm font-medium text-slate-400 mb-2">Workouts</h3><div className="space-y-2">{selectedDayData.workouts.map(workout => <div key={workout.id} className="p-3 rounded-lg bg-cyan-500/10 border border-cyan-500/20"><p className="text-sm font-medium text-white capitalize">{workout.type?.replace('_', ' ')}</p>{workout.planned_distance_km && <p className="text-xs text-slate-400">{workout.planned_distance_km} km</p>}</div>)}</div></div>}
-                {selectedDayData.assignments.length > 0 && <div><h3 className="text-sm font-medium text-slate-400 mb-2">Due Today</h3><div className="space-y-2">{selectedDayData.assignments.map(assignment => <div key={assignment.id} className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20"><p className="text-sm font-medium text-white">{assignment.title}</p><p className="text-xs text-slate-400 capitalize">{assignment.type}</p></div>)}</div></div>}
-                {selectedDayData.events.length === 0 && selectedDayData.workouts.length === 0 && selectedDayData.assignments.length === 0 && selectedDayData.studySessions.length === 0 && <p className="text-slate-500 text-sm text-center py-4">No events</p>}
+            <div className="sticky top-8 space-y-4">
+              {/* Account Manager */}
+              <AccountManager onAccountsChange={handleAccountsChange} />
+              
+              {/* Sync button is already in action row, but we can keep it here as well or remove duplicate */}
+              
+              <div className="rounded-xl bg-slate-800/30 border border-slate-700/50 p-5">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-lg font-semibold text-white">{format(selectedDate, 'MMMM d')}</h2>
+                  <Button size="sm" onClick={handleAddEvent} className="bg-teal-500/20 text-teal-400 hover:bg-teal-500/30"><Plus className="w-4 h-4" /></Button>
+                </div>
+                <div className="space-y-4">
+                  {selectedDayData.events.length > 0 && <div><h3 className="text-sm font-medium text-slate-400 mb-2">Events</h3><div className="space-y-2">{selectedDayData.events.map(event => <CalendarEventItem key={event.id} event={event} compact onClick={() => handleEditEvent(event)} />)}</div></div>}
+                  {selectedDayData.studySessions.length > 0 && <div><h3 className="text-sm font-medium text-slate-400 mb-2">Study Sessions</h3><div className="space-y-2">{selectedDayData.studySessions.map(session => <div key={session.id} className="p-3 rounded-lg bg-indigo-500/10 border border-indigo-500/20"><p className="text-sm font-medium text-white">{session.name || session.topic || 'Study Session'}</p><p className="text-xs text-slate-400">{session.duration_minutes} min{session.start_time ? ' · ' + session.start_time : ''}</p>{session.tags?.length > 0 && <div className="flex gap-1 mt-1">{session.tags.map(t => <span key={t} className="px-1 py-0.5 text-xs rounded bg-indigo-500/20 text-indigo-300">#{t}</span>)}</div>}</div>)}</div></div>}
+                  {selectedDayData.workouts.length > 0 && <div><h3 className="text-sm font-medium text-slate-400 mb-2">Workouts</h3><div className="space-y-2">{selectedDayData.workouts.map(workout => <div key={workout.id} className="p-3 rounded-lg bg-cyan-500/10 border border-cyan-500/20"><p className="text-sm font-medium text-white capitalize">{workout.type?.replace('_', ' ')}</p>{workout.planned_distance_km && <p className="text-xs text-slate-400">{workout.planned_distance_km} km</p>}</div>)}</div></div>}
+                  {selectedDayData.assignments.length > 0 && <div><h3 className="text-sm font-medium text-slate-400 mb-2">Due Today</h3><div className="space-y-2">{selectedDayData.assignments.map(assignment => <div key={assignment.id} className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20"><p className="text-sm font-medium text-white">{assignment.title}</p><p className="text-xs text-slate-400 capitalize">{assignment.type}</p></div>)}</div></div>}
+                  {selectedDayData.events.length === 0 && selectedDayData.workouts.length === 0 && selectedDayData.assignments.length === 0 && selectedDayData.studySessions.length === 0 && <p className="text-slate-500 text-sm text-center py-4">No events</p>}
+                </div>
               </div>
             </div>
           </div>

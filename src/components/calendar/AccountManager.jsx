@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { getGoogleAuthUrl } from '@/lib/google-calendar';
-import { Check, X, RefreshCw } from 'lucide-react';
+import { X } from 'lucide-react';
 
 export default function AccountManager({ onAccountsChange }) {
   const [tokens, setTokens] = useState(() => {
