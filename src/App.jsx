@@ -10,7 +10,9 @@ import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import { PreferencesProvider } from '@/components/customization/PreferencesProvider';
 import Data from './pages/Data';
 import WeeklyReview from './pages/WeeklyReview';
+import Login from './pages/Login';
 import OAuthCallback from './pages/OAuthCallback';
+import RequireAuth from './components/auth/RequireAuth';
 
 const { Pages, Layout, mainPage } = pagesConfig;
 const mainPageKey = mainPage ?? Object.keys(Pages)[0];
@@ -20,71 +22,57 @@ const LayoutWrapper = ({ children, currentPageName }) => Layout ?
   <Layout currentPageName={currentPageName}>{children}</Layout>
   : <>{children}</>;
 
-const AuthenticatedApp = () => {
-  const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
-
-  // Show loading spinner while checking app public settings or auth
-  if (isLoadingPublicSettings || isLoadingAuth) {
-    return (
-      <div className="fixed inset-0 flex items-center justify-center">
-        <div className="w-8 h-8 border-4 border-slate-200 border-t-slate-800 rounded-full animate-spin"></div>
-      </div>
-    );
-  }
-
-  // Handle authentication errors
-  if (authError) {
-    if (authError.type === 'user_not_registered') {
-      return <UserNotRegisteredError />;
-    } else if (authError.type === 'auth_required') {
-      // Redirect to login automatically
-      navigateToLogin();
-      return null;
-    }
-  }
-
-  // Render the main app
-  return (
-    <Routes>
-      <Route path="/" element={
-        <LayoutWrapper currentPageName={mainPageKey}>
-          <MainPage />
-        </LayoutWrapper>
-      } />
-      {Object.entries(Pages).map(([path, Page]) => (
-        <Route
-          key={path}
-          path={`/${path}`}
-          element={
-            <LayoutWrapper currentPageName={path}>
-              <Page />
-            </LayoutWrapper>
-          }
-        />
-      ))}
-      <Route path="/Data" element={<LayoutWrapper currentPageName="Data"><Data /></LayoutWrapper>} />
-      <Route path="/WeeklyReview" element={<LayoutWrapper currentPageName="WeeklyReview"><WeeklyReview /></LayoutWrapper>} />
-      <Route path="*" element={<PageNotFound />} />
-      <Route path="/api/auth/google/callback" element={<OAuthCallback />} />
-    </Routes>
-  );
-};
-
 function App() {
-
   return (
     <AuthProvider>
       <QueryClientProvider client={queryClientInstance}>
         <PreferencesProvider>
-        <Router>
-          <NavigationTracker />
-          <AuthenticatedApp />
-        </Router>
-        <Toaster />
+          <Router>
+            <NavigationTracker />
+            <Routes>
+              {/* Public routes */}
+              <Route path="/login" element={<Login />} />
+              <Route path="/api/auth/google/callback" element={<OAuthCallback />} />
+
+              {/* Protected routes – wrap in RequireAuth */}
+              <Route path="/" element={
+                <RequireAuth>
+                  <LayoutWrapper currentPageName={mainPageKey}>
+                    <MainPage />
+                  </LayoutWrapper>
+                </RequireAuth>
+              } />
+              {Object.entries(Pages).map(([path, Page]) => (
+                <Route
+                  key={path}
+                  path={`/${path}`}
+                  element={
+                    <RequireAuth>
+                      <LayoutWrapper currentPageName={path}>
+                        <Page />
+                      </LayoutWrapper>
+                    </RequireAuth>
+                  }
+                />
+              ))}
+              <Route path="/Data" element={
+                <RequireAuth>
+                  <LayoutWrapper currentPageName="Data"><Data /></LayoutWrapper>
+                </RequireAuth>
+              } />
+              <Route path="/WeeklyReview" element={
+                <RequireAuth>
+                  <LayoutWrapper currentPageName="WeeklyReview"><WeeklyReview /></LayoutWrapper>
+                </RequireAuth>
+              } />
+              <Route path="*" element={<PageNotFound />} />
+            </Routes>
+            <Toaster />
+          </Router>
         </PreferencesProvider>
       </QueryClientProvider>
     </AuthProvider>
-  )
+  );
 }
 
-export default App
+export default App;

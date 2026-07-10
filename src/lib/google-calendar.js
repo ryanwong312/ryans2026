@@ -1,8 +1,8 @@
 import { createClient } from '@base44/sdk';
 
+// The existing sync function (unchanged, but we'll keep it)
 export async function syncGoogleCalendar(accessToken, calendarId = 'primary') {
   try {
-    // Date range: 6 months ago to 12 months ahead
     const now = new Date();
     const sixMonthsAgo = new Date(now);
     sixMonthsAgo.setMonth(now.getMonth() - 6);
@@ -48,7 +48,6 @@ export async function syncGoogleCalendar(accessToken, calendarId = 'primary') {
       if (pageCount > 10) break;
     } while (nextPageToken);
 
-    // Convert Google events to your app's format
     const convertedEvents = allEvents.map(event => {
       const start = event.start;
       const end = event.end;
@@ -93,10 +92,8 @@ export async function syncGoogleCalendar(accessToken, calendarId = 'primary') {
     let skipped = 0;
 
     for (const ev of convertedEvents) {
-      // 1. Try to find by google_event_id
       let existing = await db.entities.CalendarEvent.filter({ google_event_id: ev.google_event_id });
 
-      // 2. If not found, try to find by title + date + start_time + all_day (fallback dedupe)
       if (existing.length === 0) {
         const possibleDuplicates = await db.entities.CalendarEvent.filter({
           title: ev.title,
@@ -105,7 +102,6 @@ export async function syncGoogleCalendar(accessToken, calendarId = 'primary') {
           all_day: ev.all_day,
         });
         if (possibleDuplicates.length > 0) {
-          // Update the first duplicate with google_event_id and refresh fields
           const dup = possibleDuplicates[0];
           await db.entities.CalendarEvent.update(dup.id, {
             google_event_id: ev.google_event_id,
@@ -121,7 +117,6 @@ export async function syncGoogleCalendar(accessToken, calendarId = 'primary') {
       }
 
       if (existing.length > 0) {
-        // Event already exists – update if needed
         const existingEvent = existing[0];
         let needsUpdate = false;
         if (existingEvent.title !== ev.title) { existingEvent.title = ev.title; needsUpdate = true; }
@@ -145,7 +140,6 @@ export async function syncGoogleCalendar(accessToken, calendarId = 'primary') {
           skipped++;
         }
       } else {
-        // New event – create
         await db.entities.CalendarEvent.create(ev);
         imported++;
       }
@@ -158,7 +152,19 @@ export async function syncGoogleCalendar(accessToken, calendarId = 'primary') {
   }
 }
 
-export function getGoogleAuthUrl() {
+// New: get user info from Google
+export async function getUserInfo(accessToken) {
+  const response = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+    headers: { 'Authorization': `Bearer ${accessToken}` },
+  });
+  if (!response.ok) {
+    throw new Error('Failed to get user info');
+  }
+  return response.json();
+}
+
+// OAuth helper with state parameter
+export function getGoogleAuthUrl(state = 'sync') {
   const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
   const redirectUri = import.meta.env.VITE_GOOGLE_REDIRECT_URI || `${window.location.origin}/api/auth/google/callback`;
   
@@ -166,9 +172,10 @@ export function getGoogleAuthUrl() {
     client_id: clientId,
     redirect_uri: redirectUri,
     response_type: 'code',
-    scope: 'https://www.googleapis.com/auth/calendar.readonly',
+    scope: 'https://www.googleapis.com/auth/calendar.readonly email profile', // added email and profile
     access_type: 'offline',
     prompt: 'consent',
+    state: state, // pass 'login' or 'sync'
   });
 
   return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;

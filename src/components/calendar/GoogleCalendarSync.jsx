@@ -7,7 +7,7 @@ export default function GoogleCalendarSync({ className }) {
   const [isSyncing, setIsSyncing] = useState(false);
 
   const handleSync = () => {
-    const authUrl = getGoogleAuthUrl();
+    const authUrl = getGoogleAuthUrl('sync'); // explicitly pass 'sync'
     window.location.href = authUrl;
   };
 
